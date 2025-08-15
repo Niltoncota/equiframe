@@ -1,0 +1,44 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+
+# Logs e dados locais
+logs/
+*.log
+
+# Volumes de dados no host
+/mnt/
+/data/
+/postgres/
+/redis/
+/meili/
+
+# Ambiente local
+.env
+.env.*
+
+# Arquivos temporários e IDE
+*.swp
+*.swo
+.DS_Store
+.vscode/
+.idea/
+*.bak
+*.tmp
+
+# Build / distribuição
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Streamlit cache
+.streamlit/
+
+# Testes
+.coverage
+htmlcov/
+pytest_cache/

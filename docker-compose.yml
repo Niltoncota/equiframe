@@ -1,0 +1,153 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - /mnt/ssd/db/equiframe/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "55432:5432"  # expõe para pgAdmin/host, sem conflitar
+
+  redis:
+    image: redis:7
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --save
+      - ""
+      - --stop-writes-on-bgsave-error
+      - "no"
+    volumes:
+      - /mnt/ssd/db/equiframe/redis:/data
+
+  meili:
+    image: getmeili/meilisearch:v1.7
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_ENV: production
+    ports: ["7700:7700"]
+    volumes:
+      - /mnt/ssd/db/equiframe/meili:/meili_data
+
+  api:
+    image: equiframe-api:latest
+    env_file: [.env]
+    working_dir: /app
+    environment:      
+      - PYTHONPATH=/app:/data/pip
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      meili:
+        condition: service_started
+    ports: ["8000:8000"]
+    volumes:
+      - ./:/app
+      - /mnt/ssd/db/equiframe/data:/data
+      - /mnt/ssd/db/equiframe/logs:/logs
+      # persistência de pacotes pip e apt
+      - /mnt/ssd/db/equiframe/apt-lib:/var/lib/apt
+      - /mnt/ssd/db/equiframe/apt-cache:/var/cache/apt
+    command: >
+      sh -lc "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${API_WORKERS:-2}"
+    restart: unless-stopped
+
+  worker:
+    image: equiframe_app:latest
+    env_file: [.env]
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app:/data/pip
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_started
+    volumes:
+      - ./:/app
+      - /mnt/ssd/db/equiframe/data:/data
+      - /mnt/ssd/db/equiframe/logs:/logs
+      - /mnt/ssd/db/equiframe/apt-lib:/var/lib/apt
+      - /mnt/ssd/db/equiframe/apt-cache:/var/cache/apt
+    command: >
+      sh -lc "celery -A app.pipeline.celery_app:app worker -l INFO -O fair -c ${WORKERS:-2} -E"
+    restart: unless-stopped
+
+  dashboard:
+    image: equiframe_app:latest
+    env_file: [.env]
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - ./:/app
+      - /mnt/ssd/db/equiframe/data:/data
+      - /mnt/ssd/db/equiframe/logs:/logs
+      - /mnt/ssd/db/equiframe/apt-lib:/var/lib/apt
+      - /mnt/ssd/db/equiframe/apt-cache:/var/cache/apt
+    ports: ["8501:8501"]        
+    command: >
+      sh -lc "/usr/local/bin/streamlit run app/dashboard_app.py --server.port=8501 --server.address=0.0.0.0"
+    restart: unless-stopped
+
+  beat:
+    image: equiframe_app:latest
+    env_file: [.env]
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app:/data/pip
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_started    
+    volumes:
+      - ./:/app
+      - /mnt/ssd/db/equiframe/data:/data
+      - /mnt/ssd/db/equiframe/logs:/logs
+      - /mnt/ssd/db/equiframe/apt-lib:/var/lib/apt
+      - /mnt/ssd/db/equiframe/apt-cache:/var/cache/apt  
+    command: >
+      sh -lc "celery -A app.pipeline.celery_app:app beat -l INFO"
+    restart: unless-stopped
+
+  flower:
+    image: mher/flower:latest
+    depends_on:
+      redis:
+        condition: service_started
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    command:
+      - celery
+      - flower
+      - --address=0.0.0.0
+      - --port=5555
+      - --persistent      
+    ports: ["5555:5555"]    
+    restart: unless-stopped
+
+networks:
+  default:
+    name: equiframe_net

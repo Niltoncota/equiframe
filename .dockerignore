@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Env
+.env
+.env.*
+
+# Logs e dados
+logs/
+*.log
+/mnt/
+/data/
+/postgres/
+/redis/
+/meili/
+
+# Build / distribuição
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# IDE / Sistema
+.DS_Store
+.vscode/
+.idea/
+
+# Streamlit cache
+.streamlit/
+
+# Testes
+.coverage
+htmlcov/
+pytest_cache/
